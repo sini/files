@@ -185,7 +185,7 @@ the project root. Use slashes for subdirectories.
 | `text`       | `nullOr lines`                | `null`  | Inline text content. Sets `source` automatically.  |
 | `source`     | `path`                        | —       | Path or derivation for the file content.           |
 | `executable` | `bool`                        | `false` | `chmod +x` after writing.                          |
-| `onChange`   | `str` or `{ runtimeInputs, script }` | `""` | Shell commands run after all files are written. |
+| `onChange`   | `str` or `{ runtimeInputs, script }` | `""` | Shell commands run after all files are written. Runs under `set -euo pipefail`. |
 | `format`     | `nullOr (name -> drv -> drv)` | `null`  | Per-file formatter. Overrides all other formatters. |
 
 ```nix
