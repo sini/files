@@ -227,6 +227,8 @@ in
         description = "Per-file check derivations.";
       };
 
+      generateApp = lib.mkEnableOption "generating a flake app for the writer";
+
       writer = {
         exeFilename = lib.mkOption {
           type = lib.types.singleLineStr;

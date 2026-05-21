@@ -17,6 +17,12 @@
           (config.files.treefmt.enable && options.formatter.isDefined)
           (lib.mkDefault config.formatter);
         checks = config.files.checks;
+        apps = lib.mkIf config.files.generateApp {
+          ${config.files.writer.exeFilename} = {
+            type = "app";
+            program = lib.getExe config.files.writer.drv;
+          };
+        };
       };
     }
   );
