@@ -38,6 +38,7 @@
   outputs =
     inputs:
     {
+      flakeModule = ./flake-module.nix;
       flakeModules.default = ./flake-module.nix;
     }
     // inputs.flake-parts.lib.mkFlake {
