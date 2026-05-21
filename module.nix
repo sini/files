@@ -253,7 +253,7 @@ in
           let
             safeName = builtins.replaceStrings [ "/" ] [ "-" ] name;
           in
-          pkgs.runCommand "treefmt-${safeName}" {} ''
+          pkgs.runCommandLocal "treefmt-${safeName}" {} ''
             # sentinel: treefmt wrapper uses --tree-root-file=flake.nix
             # to find the project root; --stdin still needs a rooted dir
             touch flake.nix
@@ -326,6 +326,10 @@ in
       pkgs.writeShellApplication {
         name = cfg.writer.exeFilename;
         runtimeInputs = [ pkgs.gitMinimal ] ++ hookRuntimeInputs;
+        derivationArgs = {
+          allowSubstitutes = false;
+          preferLocalBuild = true;
+        };
         text =
           if cfg.files == [ ] then
             ''echo "No files configured."''
@@ -339,7 +343,7 @@ in
         {
           name = "files/${path}";
           value =
-            pkgs.runCommand "flake-file-check"
+            pkgs.runCommandLocal "flake-file-check"
               {
                 nativeBuildInputs = [ pkgs.difftastic ];
                 toplevel = cfg.root;
