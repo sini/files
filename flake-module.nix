@@ -11,6 +11,9 @@
       cfg = psArgs.config.files;
     in
     {
+      imports = [
+        (lib.mkAliasOptionModule [ "files" "gitToplevel" ] [ "files" "root" ])
+      ];
       options = {
         files = {
           root = lib.mkOption {
@@ -41,14 +44,6 @@
               `"templates/my-app"` so the writer puts files in the right place.
             '';
             example = "templates/my-app";
-          };
-
-          gitToplevel = lib.mkOption {
-            type = lib.types.path;
-            default = cfg.root;
-            defaultText = lib.literalExpression "config.files.root";
-            visible = false;
-            description = "Deprecated alias for `root`.";
           };
 
           file = lib.mkOption {
@@ -210,7 +205,7 @@
               (map (
                 { path, drv, ... }:
                 ''
-                  dir=$(dirname ${path})
+                  dir=$(dirname ${lib.escapeShellArg path})
                   mkdir -p "$dir"
                   cat ${drv} > ${lib.escapeShellArg path}
                 ''
