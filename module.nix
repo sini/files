@@ -3,6 +3,40 @@
 { pkgs, lib, config, ... }:
 let
   cfg = config.files;
+
+  # onChange accepts either a plain string or { runtimeInputs, script }
+  onChangeType = lib.types.either lib.types.lines (lib.types.submodule {
+    options = {
+      runtimeInputs = lib.mkOption {
+        type = lib.types.listOf lib.types.package;
+        default = [ ];
+        description = "Packages to add to the writer's PATH.";
+      };
+      script = lib.mkOption {
+        type = lib.types.lines;
+        description = "Shell commands to run.";
+      };
+    };
+  });
+
+  # Normalize both forms to { runtimeInputs, script }
+  normalizeOnChange = v:
+    if builtins.isString v then { runtimeInputs = [ ]; script = v; }
+    else v;
+
+  # Normalized form for the internal files list
+  normalizedOnChangeType = lib.types.submodule {
+    options = {
+      runtimeInputs = lib.mkOption {
+        type = lib.types.listOf lib.types.package;
+        default = [ ];
+      };
+      script = lib.mkOption {
+        type = lib.types.lines;
+        default = "";
+      };
+    };
+  };
 in
 {
   imports = [
@@ -92,6 +126,7 @@ in
             { name, config, ... }:
             {
               options = {
+                enable = lib.mkEnableOption "this file" // { default = true; };
                 text = lib.mkOption {
                   type = lib.types.nullOr lib.types.lines;
                   default = null;
@@ -105,6 +140,29 @@ in
                   description = ''
                     Path or derivation to use as the file content.
                     Set automatically when `text` is provided.
+                  '';
+                };
+                executable = lib.mkOption {
+                  type = lib.types.bool;
+                  default = false;
+                  description = ''
+                    Make the file executable after writing (`chmod +x`).
+                  '';
+                };
+                onChange = lib.mkOption {
+                  type = onChangeType;
+                  default = "";
+                  description = ''
+                    Shell commands to run after all files are written.
+
+                    Either a plain string or an attrset with `script` and
+                    `runtimeInputs` (packages added to the writer's PATH).
+                  '';
+                  example = lib.literalExpression ''
+                    {
+                      runtimeInputs = [ pkgs.direnv ];
+                      script = "direnv reload";
+                    }
                   '';
                 };
                 format = lib.mkOption {
@@ -149,6 +207,14 @@ in
               drv = lib.mkOption {
                 type = lib.types.package;
                 description = "Derivation whose output is the file content.";
+              };
+              executable = lib.mkOption {
+                type = lib.types.bool;
+                default = false;
+              };
+              onChange = lib.mkOption {
+                type = normalizedOnChangeType;
+                default = { };
               };
             };
           }
@@ -195,7 +261,7 @@ in
               ${lib.escapeShellArg name} < ${drv} > $out
           '';
 
-        applyFormat = name: { source, format, ... }:
+        applyFormat = name: { source, format, executable, onChange, ... }:
           let
             ext = extOf name;
             formatter =
@@ -207,34 +273,57 @@ in
           {
             path = name;
             drv = if formatter != null then formatter name source else source;
+            inherit executable;
+            onChange = normalizeOnChange onChange;
           };
-      in
-      lib.mapAttrsToList applyFormat cfg.file;
 
-    files.writer.drv = pkgs.writeShellApplication {
-      name = cfg.writer.exeFilename;
-      runtimeInputs = [ pkgs.gitMinimal ];
-      text =
-        let
-          preamble = ''
-            cd "$(git rev-parse --show-toplevel)"
-          '' + lib.optionalString (cfg.relativeRoot != "") ''
-            cd ${lib.escapeShellArg cfg.relativeRoot}
-          '';
-        in
-        lib.pipe cfg.files [
-          (map (
-            { path, drv, ... }:
-            ''
-              dir=$(dirname ${lib.escapeShellArg path})
-              mkdir -p "$dir"
-              cat ${drv} > ${lib.escapeShellArg path}
-            ''
-          ))
-          (lib.concat [ preamble ])
-          lib.concatLines
-        ];
-    };
+        enabledFiles = lib.filterAttrs (_: v: v.enable) cfg.file;
+      in
+      lib.mapAttrsToList applyFormat enabledFiles;
+
+    files.writer.drv =
+      let
+        activeHooks = builtins.filter ({ onChange, ... }: onChange.script != "") cfg.files;
+        hookRuntimeInputs = lib.concatMap ({ onChange, ... }: onChange.runtimeInputs) activeHooks;
+
+        preamble = ''
+          cd "$(git rev-parse --show-toplevel)"
+        '' + lib.optionalString (cfg.relativeRoot != "") ''
+          cd ${lib.escapeShellArg cfg.relativeRoot}
+        '';
+
+        writeCommands = map (
+          { path, drv, executable, onChange, ... }:
+          let
+            hasHook = onChange.script != "";
+            escapedPath = lib.escapeShellArg path;
+          in
+          ''
+            dir=$(dirname ${escapedPath})
+            mkdir -p "$dir"
+          '' + lib.optionalString hasHook ''
+            if ! [ -f ${escapedPath} ] || ! cmp -s ${drv} ${escapedPath}; then
+              _changed_${builtins.hashString "sha256" path}=1
+            fi
+          '' + ''
+            cat ${drv} > ${escapedPath}
+          '' + lib.optionalString executable ''
+            chmod +x ${escapedPath}
+          ''
+        ) cfg.files;
+
+        onChangeHooks = map ({ path, onChange, ... }: ''
+          # onChange: ${path}
+          if [ "''${_changed_${builtins.hashString "sha256" path}-}" = 1 ]; then
+            ${onChange.script}
+          fi
+        '') activeHooks;
+      in
+      pkgs.writeShellApplication {
+        name = cfg.writer.exeFilename;
+        runtimeInputs = [ pkgs.gitMinimal ] ++ hookRuntimeInputs;
+        text = lib.concatLines ([ preamble ] ++ writeCommands ++ onChangeHooks);
+      };
 
     files.checks = lib.pipe cfg.files [
       (map (
