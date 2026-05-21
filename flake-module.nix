@@ -46,6 +46,54 @@
             example = "templates/my-app";
           };
 
+          formatters = lib.mkOption {
+            type = lib.types.attrsOf (lib.types.functionTo (lib.types.functionTo lib.types.package));
+            default = { };
+            description = ''
+              Global formatters keyed by file extension. Each formatter is a
+              function `name: source: derivation` — it receives the filename
+              and source derivation, and returns a formatted derivation.
+              Applied automatically to `files.file` entries whose extension
+              matches. Per-file `format` overrides these.
+            '';
+            example = lib.literalExpression ''
+              {
+                nix = name: drv:
+                  pkgs.runCommand "nixfmt-''${name}" { nativeBuildInputs = [ pkgs.nixfmt-rfc-style ]; } '''
+                    nixfmt < ''${drv} > $out
+                  ''';
+                json = name: drv:
+                  pkgs.runCommand "jqfmt-''${name}" { nativeBuildInputs = [ pkgs.jq ]; } '''
+                    jq . < ''${drv} > $out
+                  ''';
+              }
+            '';
+          };
+
+          treefmt = {
+            enable = lib.mkEnableOption ''
+              automatic formatting of `files.file` entries using treefmt.
+
+              When enabled, all `files.file` entries are piped through
+              `treefmt --stdin` which uses filename matching to select the
+              correct formatter. Works with treefmt-nix or any treefmt
+              wrapper set as `formatter`.
+
+              Requires a treefmt wrapper (e.g. from treefmt-nix) to be
+              available as `config.formatter`
+            '';
+
+            package = lib.mkOption {
+              type = lib.types.package;
+              defaultText = lib.literalExpression "config.formatter";
+              description = ''
+                The treefmt wrapper to use. Defaults to the flake's
+                default formatter (`nix fmt`). Override to use a
+                different treefmt configuration.
+              '';
+            };
+          };
+
           file = lib.mkOption {
             description = ''
               Attrset of files to be written and checked for.
@@ -78,6 +126,26 @@
                       description = ''
                         Path or derivation to use as the file content.
                         Set automatically when `text` is provided.
+                      '';
+                    };
+                    format = lib.mkOption {
+                      type = lib.types.nullOr (lib.types.functionTo (lib.types.functionTo lib.types.package));
+                      default = null;
+                      description = ''
+                        Per-file formatter. A function `name: source: derivation`
+                        that receives the filename and source derivation, and
+                        returns a formatted derivation. Overrides the global
+                        formatter and treefmt for this file.
+
+                        Set to `null` (default) to use treefmt or the global
+                        formatter if one matches, or no formatting.
+                      '';
+                      example = lib.literalExpression ''
+                        name: drv: pkgs.runCommand "fmt-''${name}" {
+                          nativeBuildInputs = [ pkgs.nixfmt-rfc-style ];
+                        } '''
+                          nixfmt < ''${drv} > $out
+                        '''
                       '';
                     };
                   };
@@ -185,10 +253,43 @@
       };
 
       config = {
-        files.files = lib.mapAttrsToList (name: { source, ... }: {
-          path = name;
-          drv = source;
-        }) cfg.file;
+        files.treefmt.package = lib.mkIf
+          (cfg.treefmt.enable && psArgs.options.formatter.isDefined)
+          (lib.mkDefault psArgs.config.formatter);
+
+        files.files =
+          let
+            extOf = name:
+              let parts = lib.splitString "." name;
+              in if builtins.length parts > 1 then lib.last parts else "";
+
+            treefmtFormat = name: drv:
+              let
+                safeName = builtins.replaceStrings [ "/" ] [ "-" ] name;
+              in
+              pkgs.runCommand "treefmt-${safeName}" {} ''
+                # sentinel: treefmt wrapper uses --tree-root-file=flake.nix
+                # to find the project root; --stdin still needs a rooted dir
+                touch flake.nix
+                ${lib.getExe cfg.treefmt.package} --no-cache --stdin \
+                  ${lib.escapeShellArg name} < ${drv} > $out
+              '';
+
+            applyFormat = name: { source, format, ... }:
+              let
+                ext = extOf name;
+                formatter =
+                  if format != null then format
+                  else if cfg.formatters ? ${ext} then cfg.formatters.${ext}
+                  else if cfg.treefmt.enable then treefmtFormat
+                  else null;
+              in
+              {
+                path = name;
+                drv = if formatter != null then formatter name source else source;
+              };
+          in
+          lib.mapAttrsToList applyFormat cfg.file;
 
         files.writer.drv = pkgs.writeShellApplication {
           name = psArgs.config.files.writer.exeFilename;
