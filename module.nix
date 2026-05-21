@@ -295,17 +295,21 @@ in
         writeCommands = map (
           { path, drv, executable, onChange, ... }:
           let
-            hasHook = onChange.script != "";
+            hash = builtins.hashString "sha256" path;
             escapedPath = lib.escapeShellArg path;
           in
           ''
             dir=$(dirname ${escapedPath})
             mkdir -p "$dir"
-          '' + lib.optionalString hasHook ''
-            if ! [ -f ${escapedPath} ] || ! cmp -s ${drv} ${escapedPath}; then
-              _changed_${builtins.hashString "sha256" path}=1
+            if ! [ -f ${escapedPath} ]; then
+              _changed_${hash}=1
+              echo "  create ${path}"
+            elif ! cmp -s ${drv} ${escapedPath}; then
+              _changed_${hash}=1
+              echo "  update ${path}"
+            else
+              echo "  ok     ${path}"
             fi
-          '' + ''
             cat ${drv} > ${escapedPath}
           '' + lib.optionalString executable ''
             chmod +x ${escapedPath}
