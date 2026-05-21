@@ -326,7 +326,11 @@ in
       pkgs.writeShellApplication {
         name = cfg.writer.exeFilename;
         runtimeInputs = [ pkgs.gitMinimal ] ++ hookRuntimeInputs;
-        text = lib.concatLines ([ preamble ] ++ writeCommands ++ onChangeHooks);
+        text =
+          if cfg.files == [ ] then
+            ''echo "No files configured."''
+          else
+            lib.concatLines ([ preamble ] ++ writeCommands ++ onChangeHooks);
       };
 
     files.checks = lib.pipe cfg.files [
