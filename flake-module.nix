@@ -204,22 +204,18 @@
             {
               name = "files/${path}";
               value =
-                let
-                  file =
-                    lib.pipe
-                      [ cfg.gitToplevel "/" path ]
-                      [
-                        lib.concatStrings
-                        lib.readFile
-                        (pkgs.writeText "flake-files-file")
-                      ];
-                in
                 pkgs.runCommand "flake-file-check"
                   {
                     nativeBuildInputs = [ pkgs.difftastic ];
+                    toplevel = cfg.gitToplevel;
                   }
                   ''
-                    difft --exit-code --display inline ${drv} ${file}
+                    existing="$toplevel/${path}"
+                    if [ ! -f "$existing" ]; then
+                      echo "files: ${path} not found — run the file writer first"
+                      exit 1
+                    fi
+                    difft --exit-code --display inline ${drv} "$existing"
                     touch $out
                   '';
             }
