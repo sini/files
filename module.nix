@@ -334,7 +334,7 @@ in
         };
         text =
           if cfg.files == [ ] then
-            ''echo "No files configured."''
+            ''echo "No files configured. Add entries to files.file or files.files."''
           else
             lib.concatLines ([ preamble ] ++ writeCommands ++ onChangeHooks);
       };
@@ -345,7 +345,7 @@ in
         {
           name = "files/${path}";
           value =
-            pkgs.runCommandLocal "flake-file-check"
+            pkgs.runCommandLocal "files-check-${builtins.replaceStrings ["/"] ["-"] path}"
               {
                 nativeBuildInputs = [ pkgs.difftastic ];
                 toplevel = cfg.root;
