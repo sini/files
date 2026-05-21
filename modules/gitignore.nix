@@ -2,7 +2,7 @@
 {
   options.gitignore = lib.mkOption {
     type = lib.types.lines;
-    apply = text: text |> lib.splitString "\n" |> lib.naturalSort |> lib.concatStringsSep "\n";
+    apply = text: lib.pipe text [ (lib.splitString "\n") lib.naturalSort (lib.concatStringsSep "\n") ];
   };
   config = {
     gitignore = "result";

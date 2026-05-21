@@ -14,9 +14,9 @@
       treefmt.settings.global.excludes = [ "*.txt" ];
 
       checks =
-        testCasesDir
-        |> builtins.readDir
-        |> lib.mapAttrs' (
+        lib.pipe testCasesDir [
+          builtins.readDir
+          (lib.mapAttrs' (
           dirname: type:
           let
             flake =
@@ -81,6 +81,7 @@
                   nix run .
                 '';
           }
-        );
+        ))
+        ];
     };
 }

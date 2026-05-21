@@ -1,7 +1,6 @@
 {
   nixConfig = {
     abort-on-warn = true;
-    extra-experimental-features = [ "pipe-operators" ];
     allow-import-from-derivation = false;
   };
 
@@ -38,7 +37,10 @@
 
   outputs =
     inputs:
-    inputs.flake-parts.lib.mkFlake {
+    {
+      flakeModules.default = ./flake-module.nix;
+    }
+    // inputs.flake-parts.lib.mkFlake {
       inherit inputs;
       specialArgs.projectRoot = ./.;
     } ((import inputs.import-tree) ./modules);
