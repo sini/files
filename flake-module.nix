@@ -63,6 +63,9 @@
                 '';
             type = lib.types.listOf (
               lib.types.submodule {
+                imports = [
+                  (lib.mkAliasOptionModule [ "path_" ] [ "path" ])
+                ];
                 options = {
                   path = lib.mkOption {
                     type = lib.types.str;
@@ -132,7 +135,7 @@
           runtimeInputs = [ pkgs.gitMinimal ];
           text = lib.pipe cfg.files [
             (map (
-              { path, drv }:
+              { path, drv, ... }:
               ''
                 dir=$(dirname ${path})
                 mkdir -p "$dir"
@@ -151,7 +154,7 @@
 
         checks = lib.pipe cfg.files [
           (map (
-            { path, drv }:
+            { path, drv, ... }:
             {
               name = "files/${path}";
               value =
