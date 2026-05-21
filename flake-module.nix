@@ -13,23 +13,42 @@
     {
       options = {
         files = {
-          gitToplevel = lib.mkOption {
+          root = lib.mkOption {
             type = lib.types.path;
             default = self;
             defaultText = lib.literalExpression "self";
             description = ''
-              Each check is performed by copying the existing file into the store
-              and comparing its contents with the configured contents.
+              Root directory that file paths are relative to.
 
-              For that purpose a path to the file must be provided to Nix.
-              Configured file paths are relative to the Git top-level.
-              But Nix is oblivious to the Git top-level.
-              So file paths are resolved relative to the value of this option.
+              Used by checks to compare derivation output against existing
+              files. Defaults to `self`, which is correct when the flake is
+              at the repository root.
 
-              The default value is correct when the flake is at the Git top-level.
-              Otherwise the correct Git top-level must be provided.
+              For multi-flake repositories, this should be `self` (the
+              sub-flake source), which is the default.
             '';
-            example = lib.literalExpression "../.";
+          };
+
+          relativeRoot = lib.mkOption {
+            type = lib.types.str;
+            default = "";
+            description = ''
+              Path from the Git top-level to the directory file paths are
+              relative to. Used by the writer at runtime.
+
+              Empty (default) means files are relative to the Git root.
+              For a sub-flake at `templates/my-app`, set this to
+              `"templates/my-app"` so the writer puts files in the right place.
+            '';
+            example = "templates/my-app";
+          };
+
+          gitToplevel = lib.mkOption {
+            type = lib.types.path;
+            default = cfg.root;
+            defaultText = lib.literalExpression "config.files.root";
+            visible = false;
+            description = "Deprecated alias for `root`.";
           };
 
           file = lib.mkOption {
@@ -179,23 +198,26 @@
         files.writer.drv = pkgs.writeShellApplication {
           name = psArgs.config.files.writer.exeFilename;
           runtimeInputs = [ pkgs.gitMinimal ];
-          text = lib.pipe cfg.files [
-            (map (
-              { path, drv, ... }:
-              ''
-                dir=$(dirname ${path})
-                mkdir -p "$dir"
-                cat ${drv} > ${lib.escapeShellArg path}
-              ''
-            ))
-            (lib.concat [
-              ''
-                toplevel="$(git rev-parse --show-toplevel)"
-                cd "$toplevel"
-              ''
-            ])
-            lib.concatLines
-          ];
+          text =
+            let
+              preamble = ''
+                cd "$(git rev-parse --show-toplevel)"
+              '' + lib.optionalString (cfg.relativeRoot != "") ''
+                cd ${lib.escapeShellArg cfg.relativeRoot}
+              '';
+            in
+            lib.pipe cfg.files [
+              (map (
+                { path, drv, ... }:
+                ''
+                  dir=$(dirname ${path})
+                  mkdir -p "$dir"
+                  cat ${drv} > ${lib.escapeShellArg path}
+                ''
+              ))
+              (lib.concat [ preamble ])
+              lib.concatLines
+            ];
         };
 
         checks = lib.pipe cfg.files [
@@ -207,7 +229,7 @@
                 pkgs.runCommand "flake-file-check"
                   {
                     nativeBuildInputs = [ pkgs.difftastic ];
-                    toplevel = cfg.gitToplevel;
+                    toplevel = cfg.root;
                   }
                   ''
                     existing="$toplevel/${path}"
