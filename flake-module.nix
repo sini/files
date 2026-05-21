@@ -32,6 +32,47 @@
             example = lib.literalExpression "../.";
           };
 
+          file = lib.mkOption {
+            description = ''
+              Attrset of files to be written and checked for.
+              The attribute name is the file path relative to Git top-level.
+              Use slashes for subdirectories (e.g. "diagrams/overview.md").
+            '';
+            default = { };
+            example = lib.literalExpression ''
+              {
+                "README.md".text = "# My Project";
+                ".gitignore".source = ./gitignore;
+                "docs/guide.md".text = "...";
+              }
+            '';
+            type = lib.types.attrsOf (
+              lib.types.submodule (
+                { name, config, ... }:
+                {
+                  options = {
+                    text = lib.mkOption {
+                      type = lib.types.nullOr lib.types.lines;
+                      default = null;
+                      description = ''
+                        Text content of the file.
+                        Sets `source` automatically via `pkgs.writeText`.
+                      '';
+                    };
+                    source = lib.mkOption {
+                      type = lib.types.path;
+                      description = ''
+                        Path or derivation to use as the file content.
+                        Set automatically when `text` is provided.
+                      '';
+                    };
+                  };
+                  config.source = lib.mkIf (config.text != null) (pkgs.writeText name config.text);
+                }
+              )
+            );
+          };
+
           files = lib.mkOption {
             description = ''
               Files to be written and checked for.
@@ -130,6 +171,11 @@
       };
 
       config = {
+        files.files = lib.mapAttrsToList (name: { source, ... }: {
+          path = name;
+          drv = source;
+        }) cfg.file;
+
         files.writer.drv = pkgs.writeShellApplication {
           name = psArgs.config.files.writer.exeFilename;
           runtimeInputs = [ pkgs.gitMinimal ];
