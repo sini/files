@@ -149,7 +149,6 @@ formatter pass through unchanged.
       # no formatter matches .txt — passes through unchanged
       files.file."LICENSE".text = "MIT";
 
-      packages.write-files = config.files.writer.drv;
     };
   };
 }
@@ -273,11 +272,32 @@ files.formatters.json = name: drv:
 ### `files.files` (list API)
 
 The original list-based API. `files.file` entries merge into this list
-automatically. Both APIs can be used together.
+automatically. Both APIs can be used together. The formatting pipeline
+(treefmt, global formatters, per-file `format`) applies to both APIs.
+
+| Option       | Type                          | Default | Description                                          |
+| ------------ | ----------------------------- | ------- | ---------------------------------------------------- |
+| `path`       | `str`                         | —       | File path relative to project root.                  |
+| `drv`        | `package`                     | —       | Derivation whose output is the file content.         |
+| `executable` | `bool`                        | `false` | `chmod +x` after writing.                            |
+| `format`     | `nullOr (name -> drv -> drv)` | `null`  | Per-file formatter. Overrides all other formatters.  |
+| `onChange`   | `{ runtimeInputs, script }`   | `{}`    | Shell commands run after writing if content changed. |
 
 ```nix
 files.files = [
-  { path = "README.md"; drv = pkgs.writeText "README.md" "# Hello"; }
+  {
+    path = "README.md";
+    drv = pkgs.writeText "README.md" "# Hello";
+  }
+  {
+    path = "data/config.json";
+    drv = pkgs.writers.writeJSON "config.json" { version = 1; };
+    # per-file formatter works in both APIs
+    format = name: drv:
+      pkgs.runCommand "jqfmt-${name}" { nativeBuildInputs = [ pkgs.jq ]; } ''
+        jq --sort-keys . < ${drv} > $out
+      '';
+  }
 ];
 ```
 
@@ -294,7 +314,7 @@ files.files = [
 
 ## Without flake-parts
 
-Use `module.nix` directly with `evalModules` — no flake-parts dependency:
+Use `files.module` directly with `evalModules` — no flake-parts dependency:
 
 ```nix
 {
@@ -308,7 +328,7 @@ Use `module.nix` directly with `evalModules` — no flake-parts dependency:
     pkgs = nixpkgs.legacyPackages.x86_64-linux;
     eval = pkgs.lib.evalModules {
       modules = [
-        (files + "/module.nix")
+        files.module
         {
           config._module.args = { inherit pkgs; };
           config.files.root = self;
@@ -323,3 +343,6 @@ Use `module.nix` directly with `evalModules` — no flake-parts dependency:
   };
 }
 ```
+
+For usage without any flake infrastructure, see
+[`templates/no-flake`](templates/no-flake/default.nix).

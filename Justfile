@@ -2,7 +2,7 @@ help:
   just -l
 
 fmt *args:
-  "$(nix build ./templates/ci#formatter.$(nix eval --impure --expr builtins.currentSystem) --no-link --print-out-paths)/bin/treefmt" {{args}}
+  "$(nix build ./templates/ci#formatter.$(nix eval --impure --expr builtins.currentSystem) --override-input files . --no-link --print-out-paths)/bin/treefmt" {{args}}
 
 ci:
   just fmt --ci --no-cache
