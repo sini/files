@@ -1,6 +1,5 @@
 {
   lib,
-  self,
   inputs,
   ...
 }:
@@ -8,16 +7,16 @@
   perSystem =
     { pkgs, ... }:
     let
-      testCasesDir = self + "/test-cases";
+      testCasesDir = ../test-cases;
     in
     {
       treefmt.settings.global.excludes = [ "*.txt" ];
 
-      checks =
-        lib.pipe testCasesDir [
-          builtins.readDir
-          (lib.mapAttrs' (
-          dirname: type:
+      checks = lib.pipe testCasesDir [
+        builtins.readDir
+        (lib.filterAttrs (_: type: type == "directory"))
+        (lib.mapAttrs' (
+          dirname: _:
           let
             flake =
               pkgs.writeText "test-case-${dirname}-flake.nix"
@@ -26,7 +25,7 @@
                   {
                     inputs = {
                       files = {
-                        url = "${self}";
+                        url = "${inputs.files}";
                         flake = false;
                       };
                       flake-parts = {
@@ -82,6 +81,6 @@
                 '';
           }
         ))
-        ];
+      ];
     };
 }

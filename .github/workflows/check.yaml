@@ -1,31 +1,26 @@
 {
-  "jobs": {
-    "check": {
-      "runs-on": "ubuntu-latest",
-      "steps": [
+  "jobs":
+    {
+      "check":
         {
-          "uses": "actions/checkout@v4"
+          "runs-on": "ubuntu-latest",
+          "steps":
+            [
+              { "uses": "actions/checkout@v4" },
+              {
+                "uses": "nixbuild/nix-quick-install-action@master",
+                "with":
+                  {
+                    "nix_conf": "extra-experimental-features = recursive-nix\nextra-system-features = recursive-nix\nkeep-env-derivations = true\nkeep-outputs = true\n",
+                  },
+              },
+              {
+                "uses": "nix-community/cache-nix-action@main",
+                "with": { "primary-key": "a-single-key" },
+              },
+              { "run": "nix-shell --run 'just ci'" },
+            ],
         },
-        {
-          "uses": "nixbuild/nix-quick-install-action@master",
-          "with": {
-            "nix_conf": "extra-experimental-features = recursive-nix\nextra-system-features = recursive-nix\nkeep-env-derivations = true\nkeep-outputs = true\n"
-          }
-        },
-        {
-          "uses": "nix-community/cache-nix-action@main",
-          "with": {
-            "primary-key": "a-single-key"
-          }
-        },
-        {
-          "run": "nix flake --accept-flake-config check --print-build-logs --keep-going"
-        }
-      ]
-    }
-  },
-  "on": {
-    "push": {},
-    "workflow_call": {}
-  }
+    },
+  "on": { "push": {}, "workflow_call": {} },
 }

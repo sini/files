@@ -1,10 +1,35 @@
 # files
 
+[![Nix Flake Check](https://github.com/sini/files/actions/workflows/check.yaml/badge.svg)](https://github.com/sini/files/actions/workflows/check.yaml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
+
 A [flake-parts](https://flake.parts) module for managing in-repository
 generated files. Declare file contents in Nix, write them with one command,
 and verify they stay in sync via `nix flake check`.
 
-Fork of [mightyiam/files](https://github.com/mightyiam/files).
+This project is an independent, hard fork of
+[mightyiam/files](https://github.com/mightyiam/files). It is maintained entirely
+separately and has no affiliation with, nor is it endorsed by, the original
+author.
+
+## Table of Contents
+
+- [files](#files)
+  - [Table of Contents](#table-of-contents)
+  - [Motivation](#motivation)
+  - [What this fork adds](#what-this-fork-adds)
+  - [Quick start](#quick-start)
+  - [With treefmt](#with-treefmt)
+  - [With derivation sources](#with-derivation-sources)
+  - [In a monorepo](#in-a-monorepo)
+  - [API reference](#api-reference)
+    - [`files.file`](#filesfile)
+    - [`files.treefmt`](#filestreefmt)
+    - [`files.formatters`](#filesformatters)
+    - [Formatter priority](#formatter-priority)
+    - [`files.files` (list API)](#filesfiles-list-api)
+    - [Other options](#other-options)
+  - [Without flake-parts](#without-flake-parts)
 
 ## Motivation
 
@@ -17,13 +42,13 @@ it across [den](https://github.com/denful/den)'s template ecosystem:
   flake-parts modules.
 - **Adopted experimental Nix features** — the `|>` pipe operator requires
   `extra-experimental-features = [ "pipe-operators" ]` in every consuming
-  flake's `nixConfig`. We prefer stable Nix.
+  flake's `nixConfig`. This created additional user friction.
 - **Renamed `path_` to `path` without alias** — a breaking change with no
-  migration path for existing consumers.
+  migration path or notification for existing consumers.
 - **No convenience API** — the list-of-`{path, drv}` interface requires
   boilerplate for the common case of writing text or copying a file. NixOS has
   had `environment.etc`-style attrset APIs for years.
-- **No multi-flake support** — the writer hardcodes
+- **No multi-flake support** — the writer hardcoded
   `git rev-parse --show-toplevel` with no way to target a subdirectory,
   making it unusable in monorepos.
 - **Eager eval breaks `--no-build`** — `lib.readFile` at evaluation time
@@ -46,7 +71,8 @@ it across [den](https://github.com/denful/den)'s template ecosystem:
 - **Multi-flake repo support** — `relativeRoot` for monorepo sub-flakes
 - **Lazy checks** — `nix flake check --no-build` works on fresh clones
 - **Backwards compatibility** — `path_` and `gitToplevel` aliases
-- **No experimental features** — `|>` replaced with `lib.pipe`
+- **Stable Nix syntax** - The experimental `|>` operator is replaced with
+  `lib.pipe`, so you don't need to enable `pipe-operators` in your nixConfig.
 
 ## Quick start
 
@@ -179,14 +205,14 @@ All options live under `perSystem.files`.
 Attrset of files to manage. The attribute name is the file path relative to
 the project root. Use slashes for subdirectories.
 
-| Option       | Type                          | Default | Description                                        |
-|--------------|-------------------------------|---------|----------------------------------------------------|
-| `enable`     | `bool`                        | `true`  | Set `false` to suppress this file.                 |
-| `text`       | `nullOr lines`                | `null`  | Inline text content. Sets `source` automatically.  |
-| `source`     | `path`                        | —       | Path or derivation for the file content.           |
-| `executable` | `bool`                        | `false` | `chmod +x` after writing.                          |
-| `onChange`   | `str` or `{ runtimeInputs, script }` | `""` | Shell commands run after all files are written. Runs under `set -euo pipefail`. |
-| `format`     | `nullOr (name -> drv -> drv)` | `null`  | Per-file formatter. Overrides all other formatters. |
+| Option       | Type                                 | Default | Description                                                                     |
+| ------------ | ------------------------------------ | ------- | ------------------------------------------------------------------------------- |
+| `enable`     | `bool`                               | `true`  | Set `false` to suppress this file.                                              |
+| `text`       | `nullOr lines`                       | `null`  | Inline text content. Sets `source` automatically.                               |
+| `source`     | `path`                               | —       | Path or derivation for the file content.                                        |
+| `executable` | `bool`                               | `false` | `chmod +x` after writing.                                                       |
+| `onChange`   | `str` or `{ runtimeInputs, script }` | `""`    | Shell commands run after all files are written. Runs under `set -euo pipefail`. |
+| `format`     | `nullOr (name -> drv -> drv)`        | `null`  | Per-file formatter. Overrides all other formatters.                             |
 
 ```nix
 perSystem = { config, pkgs, ... }: {
@@ -220,10 +246,10 @@ perSystem = { config, pkgs, ... }: {
 
 ### `files.treefmt`
 
-| Option    | Type      | Default            | Description                            |
-|-----------|-----------|--------------------|----------------------------------------|
-| `enable`  | `bool`    | `false`            | Format entries through `nix fmt`.      |
-| `package` | `package` | `config.formatter` | Treefmt wrapper to use.                |
+| Option    | Type      | Default            | Description                       |
+| --------- | --------- | ------------------ | --------------------------------- |
+| `enable`  | `bool`    | `false`            | Format entries through `nix fmt`. |
+| `package` | `package` | `config.formatter` | Treefmt wrapper to use.           |
 
 ### `files.formatters`
 
@@ -257,14 +283,14 @@ files.files = [
 
 ### Other options
 
-| Option         | Type             | Default    | Description                                    |
-|----------------|------------------|------------|------------------------------------------------|
-| `root`         | `path`           | —          | Root for check comparisons. Auto-set to `self` via flake-parts; set `root = self;` in vanilla flakes. |
-| `relativeRoot` | `str`            | `""`       | Subdir from git root for the writer.           |
-| `generateApp`  | `bool`           | `false`    | Expose writer as `nix run .#write-files`.      |
-| `writer.exeFilename` | `singleLineStr` | `"write-files"` | Writer executable name.              |
-| `writer.drv`   | `package`        | *(computed)*| The writer derivation (read-only).            |
-| `checks`       | `attrsOf package` | *(computed)*| Per-file check derivations (read-only).       |
+| Option               | Type              | Default         | Description                                                                                           |
+| -------------------- | ----------------- | --------------- | ----------------------------------------------------------------------------------------------------- |
+| `root`               | `path`            | —               | Root for check comparisons. Auto-set to `self` via flake-parts; set `root = self;` in vanilla flakes. |
+| `relativeRoot`       | `str`             | `""`            | Subdir from git root for the writer.                                                                  |
+| `generateApp`        | `bool`            | `false`         | Expose writer as `nix run .#write-files`.                                                             |
+| `writer.exeFilename` | `singleLineStr`   | `"write-files"` | Writer executable name.                                                                               |
+| `writer.drv`         | `package`         | _(computed)_    | The writer derivation (read-only).                                                                    |
+| `checks`             | `attrsOf package` | _(computed)_    | Per-file check derivations (read-only).                                                               |
 
 ## Without flake-parts
 

@@ -30,12 +30,11 @@ in
                   uses = "nix-community/cache-nix-action@main";
                   "with".primary-key = "a-single-key";
                 }
-                { run = "nix flake --accept-flake-config check --print-build-logs --keep-going"; }
+                { run = "nix-shell --run 'just ci'"; }
               ];
             };
           };
         }
       ];
-      treefmt.settings.global.excludes = [ path ];
     };
 }
