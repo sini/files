@@ -22,6 +22,12 @@ author.
 - [With derivation sources](#with-derivation-sources)
 - [In a monorepo](#in-a-monorepo)
 - [API reference](#api-reference)
+  - [`files.file`](#filesfile)
+  - [`files.treefmt`](#filestreefmt)
+  - [`files.formatters`](#filesformatters)
+  - [Formatter priority](#formatter-priority)
+  - [`files.files` (list API)](#filesfiles-list-api)
+  - [Other options](#other-options)
 - [Without flake-parts](#without-flake-parts)
 
 ## Motivation
