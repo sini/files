@@ -1,28 +1,41 @@
 # Framework-agnostic files module.
 # Used directly by vanilla flakes, or wrapped by flake-module.nix for flake-parts.
-{ pkgs, lib, config, ... }:
+{
+  pkgs,
+  lib,
+  config,
+  ...
+}:
 let
   cfg = config.files;
 
   # onChange accepts either a plain string or { runtimeInputs, script }
-  onChangeType = lib.types.either lib.types.lines (lib.types.submodule {
-    options = {
-      runtimeInputs = lib.mkOption {
-        type = lib.types.listOf lib.types.package;
-        default = [ ];
-        description = "Packages to add to the writer's PATH.";
+  onChangeType = lib.types.either lib.types.lines (
+    lib.types.submodule {
+      options = {
+        runtimeInputs = lib.mkOption {
+          type = lib.types.listOf lib.types.package;
+          default = [ ];
+          description = "Packages to add to the writer's PATH.";
+        };
+        script = lib.mkOption {
+          type = lib.types.lines;
+          description = "Shell commands to run.";
+        };
       };
-      script = lib.mkOption {
-        type = lib.types.lines;
-        description = "Shell commands to run.";
-      };
-    };
-  });
+    }
+  );
 
   # Normalize both forms to { runtimeInputs, script }
-  normalizeOnChange = v:
-    if builtins.isString v then { runtimeInputs = [ ]; script = v; }
-    else v;
+  normalizeOnChange =
+    v:
+    if builtins.isString v then
+      {
+        runtimeInputs = [ ];
+        script = v;
+      }
+    else
+      v;
 
   # Normalized form for the internal files list
   normalizedOnChangeType = lib.types.submodule {
@@ -126,7 +139,9 @@ in
             { name, config, ... }:
             {
               options = {
-                enable = lib.mkEnableOption "this file" // { default = true; };
+                enable = lib.mkEnableOption "this file" // {
+                  default = true;
+                };
                 text = lib.mkOption {
                   type = lib.types.nullOr lib.types.lines;
                   default = null;
@@ -197,6 +212,7 @@ in
         type = lib.types.listOf (
           lib.types.submodule {
             imports = [
+              # backward compat with upstream mightyiam/files
               (lib.mkAliasOptionModule [ "path_" ] [ "path" ])
             ];
             options = {
@@ -212,6 +228,14 @@ in
                 type = lib.types.bool;
                 default = false;
               };
+              format = lib.mkOption {
+                type = lib.types.nullOr (lib.types.functionTo (lib.types.functionTo lib.types.package));
+                default = null;
+                description = ''
+                  Per-file formatter. A function `name: source: derivation`.
+                  Overrides global formatters and treefmt for this entry.
+                '';
+              };
               onChange = lib.mkOption {
                 type = normalizedOnChangeType;
                 default = { };
@@ -219,6 +243,13 @@ in
             };
           }
         );
+      };
+
+      _formattedFiles = lib.mkOption {
+        type = lib.types.listOf lib.types.unspecified;
+        readOnly = true;
+        internal = true;
+        description = "Files with formatting applied (internal).";
       };
 
       checks = lib.mkOption {
@@ -247,55 +278,98 @@ in
   config = {
     files.files =
       let
-        extOf = name:
-          let parts = lib.splitString "." name;
-          in if builtins.length parts > 1 then lib.last parts else "";
-
-        treefmtFormat = name: drv:
-          let
-            safeName = builtins.replaceStrings [ "/" ] [ "-" ] name;
-          in
-          pkgs.runCommandLocal "treefmt-${safeName}" {} ''
-            # sentinel: treefmt wrapper uses --tree-root-file=flake.nix
-            # to find the project root; --stdin still needs a rooted dir
-            touch flake.nix
-            ${lib.getExe cfg.treefmt.package} --no-cache --stdin \
-              ${lib.escapeShellArg name} < ${drv} > $out
-          '';
-
-        applyFormat = name: { source, format, executable, onChange, ... }:
-          let
-            ext = extOf name;
-            formatter =
-              if format != null then format
-              else if cfg.formatters ? ${ext} then cfg.formatters.${ext}
-              else if cfg.treefmt.enable then treefmtFormat
-              else null;
-          in
+        toListEntry =
+          name:
+          {
+            source,
+            format,
+            executable,
+            onChange,
+            ...
+          }:
           {
             path = name;
-            drv = if formatter != null then formatter name source else source;
-            inherit executable;
+            drv = source;
+            inherit executable format;
             onChange = normalizeOnChange onChange;
           };
 
         enabledFiles = lib.filterAttrs (_: v: v.enable) cfg.file;
       in
-      lib.mapAttrsToList applyFormat enabledFiles;
+      lib.mapAttrsToList toListEntry enabledFiles;
+
+    # apply formatting to all files.files entries (both attrset and list API)
+    files._formattedFiles =
+      let
+        extOf =
+          name:
+          let
+            parts = lib.splitString "." name;
+          in
+          if builtins.length parts > 1 then lib.last parts else "";
+
+        treefmtFormat =
+          name: drv:
+          let
+            safeName = builtins.replaceStrings [ "/" ] [ "-" ] name;
+          in
+          pkgs.runCommandLocal "treefmt-${safeName}" { } ''
+            # write file into a tree so treefmt formats it the same way
+            # as a direct invocation (--stdin can pick a different parser)
+            touch flake.nix
+            mkdir -p "$(dirname ${lib.escapeShellArg name})"
+            cp ${drv} ${lib.escapeShellArg name}
+            chmod u+w ${lib.escapeShellArg name}
+            ${lib.getExe cfg.treefmt.package} --no-cache ${lib.escapeShellArg name}
+            cp ${lib.escapeShellArg name} $out
+          '';
+
+        applyFormat =
+          {
+            path,
+            drv,
+            format ? null,
+            ...
+          }@entry:
+          let
+            ext = extOf path;
+            formatter =
+              if format != null then
+                format
+              else if cfg.formatters ? ${ext} then
+                cfg.formatters.${ext}
+              else if cfg.treefmt.enable then
+                treefmtFormat
+              else
+                null;
+          in
+          (removeAttrs entry [ "format" ])
+          // {
+            drv = if formatter != null then formatter path drv else drv;
+          };
+      in
+      map applyFormat cfg.files;
 
     files.writer.drv =
       let
-        activeHooks = builtins.filter ({ onChange, ... }: onChange.script != "") cfg.files;
+        formattedFiles = cfg._formattedFiles;
+        activeHooks = builtins.filter ({ onChange, ... }: onChange.script != "") formattedFiles;
         hookRuntimeInputs = lib.concatMap ({ onChange, ... }: onChange.runtimeInputs) activeHooks;
 
         preamble = ''
           cd "$(git rev-parse --show-toplevel)"
-        '' + lib.optionalString (cfg.relativeRoot != "") ''
+        ''
+        + lib.optionalString (cfg.relativeRoot != "") ''
           cd ${lib.escapeShellArg cfg.relativeRoot}
         '';
 
         writeCommands = map (
-          { path, drv, executable, onChange, ... }:
+          {
+            path,
+            drv,
+            executable,
+            ...
+          }:
           let
             hash = builtins.hashString "sha256" path;
             escapedPath = lib.escapeShellArg path;
@@ -313,17 +387,21 @@ in
               echo "  ok     ${path}"
             fi
             cat ${drv} > ${escapedPath}
-          '' + lib.optionalString executable ''
+          ''
+          + lib.optionalString executable ''
             chmod +x ${escapedPath}
           ''
-        ) cfg.files;
+        ) formattedFiles;
 
-        onChangeHooks = map ({ path, onChange, ... }: ''
-          # onChange: ${path}
-          if [ "''${_changed_${builtins.hashString "sha256" path}-}" = 1 ]; then
-            ${onChange.script}
-          fi
-        '') activeHooks;
+        onChangeHooks = map (
+          { path, onChange, ... }:
+          ''
+            # onChange: ${path}
+            if [ "''${_changed_${builtins.hashString "sha256" path}-}" = 1 ]; then
+              ${onChange.script}
+            fi
+          ''
+        ) activeHooks;
       in
       pkgs.writeShellApplication {
         name = cfg.writer.exeFilename;
@@ -333,19 +411,19 @@ in
           preferLocalBuild = true;
         };
         text =
-          if cfg.files == [ ] then
+          if formattedFiles == [ ] then
             ''echo "No files configured. Add entries to files.file or files.files."''
           else
             lib.concatLines ([ preamble ] ++ writeCommands ++ onChangeHooks);
       };
 
-    files.checks = lib.pipe cfg.files [
+    files.checks = lib.pipe cfg._formattedFiles [
       (map (
         { path, drv, ... }:
         {
           name = "files/${path}";
           value =
-            pkgs.runCommandLocal "files-check-${builtins.replaceStrings ["/"] ["-"] path}"
+            pkgs.runCommandLocal "files-check-${builtins.replaceStrings [ "/" ] [ "-" ] path}"
               {
                 nativeBuildInputs = [ pkgs.difftastic ];
                 toplevel = cfg.root;

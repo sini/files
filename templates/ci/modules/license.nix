@@ -5,13 +5,13 @@
       path = "LICENSE";
     in
     {
-      treefmt.projectRootFile = path;
       files.files = [
         {
           inherit path;
           drv = pkgs.writeText "LICENSE" ''
             MIT License
 
+            Copyright (c) 2026 Jason Bowman (@sini)
             Copyright (c) 2025 Shahar "Dawn" Or
 
             Permission is hereby granted, free of charge, to any person obtaining a copy
