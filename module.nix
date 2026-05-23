@@ -150,11 +150,34 @@ in
                     Sets `source` automatically via `pkgs.writeText`.
                   '';
                 };
+                json = lib.mkOption {
+                  type = lib.types.nullOr lib.types.anything;
+                  default = null;
+                  description = ''
+                    JSON value to serialize. Sets `source` automatically.
+                  '';
+                };
+                toml = lib.mkOption {
+                  type = lib.types.nullOr lib.types.anything;
+                  default = null;
+                  description = ''
+                    TOML value to serialize. Sets `source` automatically.
+                  '';
+                };
+                yaml = lib.mkOption {
+                  type = lib.types.nullOr lib.types.anything;
+                  default = null;
+                  description = ''
+                    YAML value to serialize. Sets `source` automatically.
+                    Requires `pkgs.yj` for JSON-to-YAML conversion.
+                  '';
+                };
                 source = lib.mkOption {
                   type = lib.types.path;
                   description = ''
                     Path or derivation to use as the file content.
-                    Set automatically when `text` is provided.
+                    Set automatically when `text`, `json`, `toml`, or `yaml`
+                    is provided.
                   '';
                 };
                 executable = lib.mkOption {
@@ -198,7 +221,30 @@ in
                   '';
                 };
               };
-              config.source = lib.mkIf (config.text != null) (pkgs.writeText name config.text);
+              config.source =
+                let
+                  contentSources = lib.filter (x: x != null) [
+                    config.text
+                    config.json
+                    config.toml
+                    config.yaml
+                  ];
+                in
+                assert lib.assertMsg (
+                  builtins.length contentSources <= 1
+                ) "files.file.\"${name}\": only one of text, json, toml, yaml may be set";
+                if config.text != null then
+                  pkgs.writeText name config.text
+                else if config.json != null then
+                  pkgs.writers.writeJSON name config.json
+                else if config.toml != null then
+                  (pkgs.formats.toml { }).generate name config.toml
+                else if config.yaml != null then
+                  pkgs.runCommand name { nativeBuildInputs = [ pkgs.yj ]; } ''
+                    yj -jy < ${pkgs.writers.writeJSON name config.yaml} > $out
+                  ''
+                else
+                  lib.mkDefault config.source;
             }
           )
         );
@@ -272,11 +318,24 @@ in
           readOnly = true;
         };
       };
+
+      diff = {
+        exeFilename = lib.mkOption {
+          type = lib.types.singleLineStr;
+          default = "diff-files";
+          description = "The diff executable filename.";
+        };
+        drv = lib.mkOption {
+          description = "The diff executable derivation (read-only).";
+          type = lib.types.package;
+          readOnly = true;
+        };
+      };
     };
   };
 
-  config = {
-    files.files =
+  config.files = {
+    files =
       let
         toListEntry =
           name:
@@ -299,7 +358,7 @@ in
       lib.mapAttrsToList toListEntry enabledFiles;
 
     # apply formatting to all files.files entries (both attrset and list API)
-    files._formattedFiles =
+    _formattedFiles =
       let
         extOf =
           name:
@@ -336,12 +395,8 @@ in
             formatter =
               if format != null then
                 format
-              else if cfg.formatters ? ${ext} then
-                cfg.formatters.${ext}
-              else if cfg.treefmt.enable then
-                treefmtFormat
               else
-                null;
+                cfg.formatters.${ext} or (if cfg.treefmt.enable then treefmtFormat else null);
           in
           (removeAttrs entry [ "format" ])
           // {
@@ -350,7 +405,7 @@ in
       in
       map applyFormat cfg.files;
 
-    files.writer.drv =
+    writer.drv =
       let
         formattedFiles = cfg._formattedFiles;
         activeHooks = builtins.filter ({ onChange, ... }: onChange.script != "") formattedFiles;
@@ -417,7 +472,77 @@ in
             lib.concatLines ([ preamble ] ++ writeCommands ++ onChangeHooks);
       };
 
-    files.checks = lib.pipe cfg._formattedFiles [
+    diff.drv =
+      let
+        formattedFiles = cfg._formattedFiles;
+
+        preamble = ''
+          cd "$(git rev-parse --show-toplevel)"
+        ''
+        + lib.optionalString (cfg.relativeRoot != "") ''
+          cd ${lib.escapeShellArg cfg.relativeRoot}
+        '';
+
+        diffCommands = map (
+          { path, drv, ... }:
+          let
+            escapedPath = lib.escapeShellArg path;
+          in
+          ''
+            if ! [ -f ${escapedPath} ]; then
+              echo "  create ${path}"
+              _changes=$((_changes + 1))
+              if [ "$_verbose" = 1 ]; then
+                cat ${drv}
+              fi
+            elif ! cmp -s ${drv} ${escapedPath}; then
+              echo "  update ${path}"
+              _changes=$((_changes + 1))
+              if [ "$_verbose" = 1 ]; then
+                difft --display inline ${escapedPath} ${drv} || true
+              fi
+            else
+              echo "  ok     ${path}"
+            fi
+          ''
+        ) formattedFiles;
+      in
+      pkgs.writeShellApplication {
+        name = cfg.diff.exeFilename;
+        runtimeInputs = [
+          pkgs.gitMinimal
+          pkgs.difftastic
+        ];
+        derivationArgs = {
+          allowSubstitutes = false;
+          preferLocalBuild = true;
+        };
+        text =
+          if formattedFiles == [ ] then
+            ''echo "No files configured. Add entries to files.file or files.files."''
+          else
+            ''
+              _changes=0
+              _verbose=0
+              for arg in "$@"; do
+                case "$arg" in
+                  -v|--verbose) _verbose=1 ;;
+                esac
+              done
+            ''
+            + preamble
+            + lib.concatLines diffCommands
+            + ''
+              if [ "$_changes" -eq 0 ]; then
+                echo "All files up to date."
+              else
+                echo "$_changes file(s) would change."
+                exit 1
+              fi
+            '';
+      };
+
+    checks = lib.pipe cfg._formattedFiles [
       (map (
         { path, drv, ... }:
         {

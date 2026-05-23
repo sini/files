@@ -1,6 +1,6 @@
 let
   lock = builtins.fromJSON (builtins.readFile ./flake.lock);
-  locked = lock.nodes.with-inputs.locked;
+  inherit (lock.nodes.with-inputs) locked;
   with-inputs = fetchTarball {
     url = "https://github.com/${locked.owner}/${locked.repo}/archive/${locked.rev}.zip";
     sha256 = locked.narHash;

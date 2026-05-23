@@ -14,28 +14,34 @@ let
     modules = [
       (files + "/module.nix")
       {
-        config._module.args = {
-          inherit pkgs;
+        config = {
+          _module.args = {
+            inherit pkgs;
+          };
+          files = {
+            inherit root;
+
+            # --- files.file attrset API ---
+            file = {
+              ".gitignore".text = ''
+                result
+              '';
+
+              "README.md".text = ''
+                # no-flake demo
+                Uses `import` and `evalModules` — no flake required.
+              '';
+            };
+
+            # --- files.files list API ---
+            files = [
+              {
+                path = "data/version.txt";
+                drv = pkgs.writeText "version.txt" "0.1.0";
+              }
+            ];
+          };
         };
-        config.files.root = root;
-
-        # --- files.file attrset API ---
-        config.files.file.".gitignore".text = ''
-          result
-        '';
-
-        config.files.file."README.md".text = ''
-          # no-flake demo
-          Uses `import` and `evalModules` — no flake required.
-        '';
-
-        # --- files.files list API ---
-        config.files.files = [
-          {
-            path = "data/version.txt";
-            drv = pkgs.writeText "version.txt" "0.1.0";
-          }
-        ];
       }
     ];
   };

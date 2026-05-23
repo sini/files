@@ -62,7 +62,11 @@ it across [den](https://github.com/denful/den)'s template ecosystem:
 - **Works with and without flake-parts** — `flakeModule` for flake-parts,
   `module` for vanilla flakes via `evalModules`
 - **`files.file` convenience API** — `environment.etc`-style attrset with
-  `text` and `source` options
+  `text`, `source`, `json`, `toml`, and `yaml` options
+- **Structured data renderers** — `json`, `toml`, and `yaml` options
+  serialize Nix values directly, no `pkgs.writers.*` boilerplate
+- **Diff preview** — `nix run .#diff-files` shows what would change
+  without writing; `--verbose` for full diffs
 - **[treefmt-nix](https://github.com/numtide/treefmt-nix) integration** —
   `files.treefmt.enable` formats all entries through `nix fmt`
 - **Formatters** — global `files.formatters` by extension and per-file
@@ -82,6 +86,7 @@ Working examples live in [`templates/`](templates/):
 - [`flake-parts`](templates/flake-parts/) — flake-parts + import-tree with treefmt, global formatters, per-file overrides, onChange hooks, and both APIs
 - [`bare-flake`](templates/bare-flake/) — vanilla flake using `evalModules`, no flake-parts dependency
 - [`no-flake`](templates/no-flake/) — pure `default.nix` with `import`, no flake infrastructure
+- [`dag`](templates/dag/) — composing a single file from sections across multiple modules using [dag](https://github.com/theutz/dag) for topological ordering
 
 ## Quick start
 
@@ -116,8 +121,10 @@ Working examples live in [`templates/`](templates/):
 ```
 
 ```sh
-nix run .#write-files   # write files to disk
-nix flake check         # verify they match
+nix run .#write-files       # write files to disk
+nix run .#diff-files        # preview what would change
+nix run .#diff-files -- -v  # preview with full diffs
+nix flake check             # verify they match
 ```
 
 ## With treefmt
@@ -217,6 +224,9 @@ the project root. Use slashes for subdirectories.
 | ------------ | ------------------------------------ | ------- | ------------------------------------------------------------------------------- |
 | `enable`     | `bool`                               | `true`  | Set `false` to suppress this file.                                              |
 | `text`       | `nullOr lines`                       | `null`  | Inline text content. Sets `source` automatically.                               |
+| `json`       | `nullOr anything`                    | `null`  | JSON value to serialize. Sets `source` automatically.                           |
+| `toml`       | `nullOr anything`                    | `null`  | TOML value to serialize. Sets `source` automatically.                           |
+| `yaml`       | `nullOr anything`                    | `null`  | YAML value to serialize. Sets `source` automatically.                           |
 | `source`     | `path`                               | —       | Path or derivation for the file content.                                        |
 | `executable` | `bool`                               | `false` | `chmod +x` after writing.                                                       |
 | `onChange`   | `str` or `{ runtimeInputs, script }` | `""`    | Shell commands run after all files are written. Runs under `set -euo pipefail`. |
@@ -243,6 +253,14 @@ perSystem = { config, pkgs, ... }: {
       runtimeInputs = [ pkgs.direnv ];
       script = "direnv reload";
     };
+  };
+
+  # structured data — no pkgs.writers.* boilerplate
+  files.file."data/config.json".json = { version = 1; debug = false; };
+  files.file."data/settings.toml".toml = { database.host = "localhost"; };
+  files.file."data/compose.yaml".yaml = {
+    version = "3";
+    services.app.image = "myapp:latest";
   };
 
   # disable a file defined by a shared module
@@ -316,9 +334,11 @@ files.files = [
 | -------------------- | ----------------- | --------------- | ----------------------------------------------------------------------------------------------------- |
 | `root`               | `path`            | —               | Root for check comparisons. Auto-set to `self` via flake-parts; set `root = self;` in vanilla flakes. |
 | `relativeRoot`       | `str`             | `""`            | Subdir from git root for the writer.                                                                  |
-| `generateApp`        | `bool`            | `false`         | Expose writer as `nix run .#write-files`.                                                             |
+| `generateApp`        | `bool`            | `false`         | Expose writer and diff as `nix run .#write-files` / `nix run .#diff-files`.                           |
 | `writer.exeFilename` | `singleLineStr`   | `"write-files"` | Writer executable name.                                                                               |
 | `writer.drv`         | `package`         | _(computed)_    | The writer derivation (read-only).                                                                    |
+| `diff.exeFilename`   | `singleLineStr`   | `"diff-files"`  | Diff executable name.                                                                                 |
+| `diff.drv`           | `package`         | _(computed)_    | The diff derivation (read-only). Shows what would change without writing.                             |
 | `checks`             | `attrsOf package` | _(computed)_    | Per-file check derivations (read-only).                                                               |
 
 ## Without flake-parts
