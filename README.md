@@ -67,6 +67,8 @@ it across [den](https://github.com/denful/den)'s template ecosystem:
   `files.treefmt.enable` formats all entries through `nix fmt`
 - **Formatters** — global `files.formatters` by extension and per-file
   `format` for custom post-processing
+- **onChange hooks** — run shell commands after writing, with optional
+  `runtimeInputs` for extra packages on the writer's PATH
 - **Multi-flake repo support** — `relativeRoot` for monorepo sub-flakes
 - **Lazy checks** — `nix flake check --no-build` works on fresh clones
 - **Backwards compatibility** — `path_` and `gitToplevel` aliases
