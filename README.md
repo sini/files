@@ -86,6 +86,7 @@ Working examples live in [`templates/`](templates/):
 - [`flake-parts`](templates/flake-parts/) — flake-parts + import-tree with treefmt, global formatters, per-file overrides, onChange hooks, and both APIs
 - [`bare-flake`](templates/bare-flake/) — vanilla flake using `evalModules`, no flake-parts dependency
 - [`no-flake`](templates/no-flake/) — pure `default.nix` with `import`, no flake infrastructure
+- [`dag`](templates/dag/) — composing a single file from sections across multiple modules using [dag](https://github.com/theutz/dag) for topological ordering
 
 ## Quick start
 
