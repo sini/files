@@ -323,8 +323,8 @@ in
     };
   };
 
-  config = {
-    files.files =
+  config.files = {
+    files =
       let
         toListEntry =
           name:
@@ -347,7 +347,7 @@ in
       lib.mapAttrsToList toListEntry enabledFiles;
 
     # apply formatting to all files.files entries (both attrset and list API)
-    files._formattedFiles =
+    _formattedFiles =
       let
         extOf =
           name:
@@ -384,12 +384,8 @@ in
             formatter =
               if format != null then
                 format
-              else if cfg.formatters ? ${ext} then
-                cfg.formatters.${ext}
-              else if cfg.treefmt.enable then
-                treefmtFormat
               else
-                null;
+                cfg.formatters.${ext} or (if cfg.treefmt.enable then treefmtFormat else null);
           in
           (removeAttrs entry [ "format" ])
           // {
@@ -398,7 +394,7 @@ in
       in
       map applyFormat cfg.files;
 
-    files.writer.drv =
+    writer.drv =
       let
         formattedFiles = cfg._formattedFiles;
         activeHooks = builtins.filter ({ onChange, ... }: onChange.script != "") formattedFiles;
@@ -465,7 +461,7 @@ in
             lib.concatLines ([ preamble ] ++ writeCommands ++ onChangeHooks);
       };
 
-    files.diff.drv =
+    diff.drv =
       let
         formattedFiles = cfg._formattedFiles;
 
@@ -535,7 +531,7 @@ in
             '';
       };
 
-    files.checks = lib.pipe cfg._formattedFiles [
+    checks = lib.pipe cfg._formattedFiles [
       (map (
         { path, drv, ... }:
         {

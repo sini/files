@@ -2,7 +2,7 @@
   inputs = {
     files.url = "github:sini/files";
 
-    dag.url = "github:theutz/dag";
+    dag.url = "github:denful/dag";
 
     flake-parts = {
       url = "github:hercules-ci/flake-parts";
@@ -18,6 +18,5 @@
   };
 
   outputs =
-    inputs:
-    inputs.flake-parts.lib.mkFlake { inherit inputs; } ((import inputs.import-tree) ./modules);
+    inputs: inputs.flake-parts.lib.mkFlake { inherit inputs; } ((import inputs.import-tree) ./modules);
 }

@@ -19,37 +19,43 @@
         modules = [
           files.module
           {
-            config._module.args = {
-              inherit pkgs;
+            config = {
+              _module.args = {
+                inherit pkgs;
+              };
+              files = {
+                root = self;
+
+                # --- files.file attrset API ---
+                file = {
+                  ".gitignore".text = ''
+                    result
+                    .direnv
+                  '';
+
+                  "README.md".text = ''
+                    # bare-flake demo
+                    Uses `evalModules` with `files.module` directly.
+                  '';
+
+                  "scripts/hello.sh" = {
+                    text = ''
+                      #!/bin/sh
+                      echo "hello from bare flake!"
+                    '';
+                    executable = true;
+                  };
+                };
+
+                # --- files.files list API ---
+                files = [
+                  {
+                    path = "data/version.txt";
+                    drv = pkgs.writeText "version.txt" "0.1.0";
+                  }
+                ];
+              };
             };
-            config.files.root = self;
-
-            # --- files.file attrset API ---
-            config.files.file.".gitignore".text = ''
-              result
-              .direnv
-            '';
-
-            config.files.file."README.md".text = ''
-              # bare-flake demo
-              Uses `evalModules` with `files.module` directly.
-            '';
-
-            config.files.file."scripts/hello.sh" = {
-              text = ''
-                #!/bin/sh
-                echo "hello from bare flake!"
-              '';
-              executable = true;
-            };
-
-            # --- files.files list API ---
-            config.files.files = [
-              {
-                path = "data/version.txt";
-                drv = pkgs.writeText "version.txt" "0.1.0";
-              }
-            ];
           }
         ];
       };
