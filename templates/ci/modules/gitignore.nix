@@ -11,7 +11,10 @@
       ];
   };
   config = {
-    gitignore = "result";
+    gitignore = ''
+      .worktrees
+      result
+    '';
     perSystem =
       { pkgs, ... }:
       {
