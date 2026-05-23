@@ -14,22 +14,15 @@ author.
 
 ## Table of Contents
 
-- [files](#files)
-  - [Table of Contents](#table-of-contents)
-  - [Motivation](#motivation)
-  - [What this fork adds](#what-this-fork-adds)
-  - [Quick start](#quick-start)
-  - [With treefmt](#with-treefmt)
-  - [With derivation sources](#with-derivation-sources)
-  - [In a monorepo](#in-a-monorepo)
-  - [API reference](#api-reference)
-    - [`files.file`](#filesfile)
-    - [`files.treefmt`](#filestreefmt)
-    - [`files.formatters`](#filesformatters)
-    - [Formatter priority](#formatter-priority)
-    - [`files.files` (list API)](#filesfiles-list-api)
-    - [Other options](#other-options)
-  - [Without flake-parts](#without-flake-parts)
+- [Motivation](#motivation)
+- [What this fork adds](#what-this-fork-adds)
+- [Templates](#templates)
+- [Quick start](#quick-start)
+- [With treefmt](#with-treefmt)
+- [With derivation sources](#with-derivation-sources)
+- [In a monorepo](#in-a-monorepo)
+- [API reference](#api-reference)
+- [Without flake-parts](#without-flake-parts)
 
 ## Motivation
 
@@ -73,6 +66,14 @@ it across [den](https://github.com/denful/den)'s template ecosystem:
 - **Backwards compatibility** — `path_` and `gitToplevel` aliases
 - **Stable Nix syntax** - The experimental `|>` operator is replaced with
   `lib.pipe`, so you don't need to enable `pipe-operators` in your nixConfig.
+
+## Templates
+
+Working examples live in [`templates/`](templates/):
+
+- [`flake-parts`](templates/flake-parts/) — flake-parts + import-tree with treefmt, global formatters, per-file overrides, onChange hooks, and both APIs
+- [`bare-flake`](templates/bare-flake/) — vanilla flake using `evalModules`, no flake-parts dependency
+- [`no-flake`](templates/no-flake/) — pure `default.nix` with `import`, no flake infrastructure
 
 ## Quick start
 
