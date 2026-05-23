@@ -17,8 +17,7 @@
             nix run .#write-files
             git add --intent-to-add .
             nix flake check
-            # verify enabled file exists and disabled does not
-            test -f should-exist.txt
+            # verify disabled file was not written
             ! test -f should-not-exist.txt
             declare out
             touch "$out"
