@@ -222,6 +222,17 @@ in
                 };
               };
               config.source =
+                let
+                  contentSources = lib.filter (x: x != null) [
+                    config.text
+                    config.json
+                    config.toml
+                    config.yaml
+                  ];
+                in
+                assert lib.assertMsg (
+                  builtins.length contentSources <= 1
+                ) "files.file.\"${name}\": only one of text, json, toml, yaml may be set";
                 if config.text != null then
                   pkgs.writeText name config.text
                 else if config.json != null then
@@ -482,7 +493,7 @@ in
               echo "  create ${path}"
               _changes=$((_changes + 1))
               if [ "$_verbose" = 1 ]; then
-                difft --display inline /dev/null ${drv} || true
+                cat ${drv}
               fi
             elif ! cmp -s ${drv} ${escapedPath}; then
               echo "  update ${path}"
