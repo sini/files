@@ -24,12 +24,29 @@
       # text content — auto-formatted by nixfmt via treefmt
       files.file."config.nix".text = "{foo=1;bar=2;}";
 
-      # source from structured data — formatted by global .json formatter
-      files.file."data/config.json".source = pkgs.writers.writeJSON "config.json" {
+      # --- structured data renderers ---
+
+      # json option — serializes Nix values to JSON
+      files.file."data/config.json".json = {
         version = 1;
         features = {
           treefmt = true;
           formatters = true;
+        };
+      };
+
+      # toml option — serializes Nix values to TOML
+      files.file."data/settings.toml".toml = {
+        database.host = "localhost";
+        database.port = 5432;
+      };
+
+      # yaml option — serializes Nix values to YAML
+      files.file."data/docker-compose.yaml".yaml = {
+        version = "3";
+        services.app = {
+          image = "myapp:latest";
+          ports = [ "8080:80" ];
         };
       };
 

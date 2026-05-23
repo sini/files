@@ -150,11 +150,34 @@ in
                     Sets `source` automatically via `pkgs.writeText`.
                   '';
                 };
+                json = lib.mkOption {
+                  type = lib.types.nullOr lib.types.anything;
+                  default = null;
+                  description = ''
+                    JSON value to serialize. Sets `source` automatically.
+                  '';
+                };
+                toml = lib.mkOption {
+                  type = lib.types.nullOr lib.types.anything;
+                  default = null;
+                  description = ''
+                    TOML value to serialize. Sets `source` automatically.
+                  '';
+                };
+                yaml = lib.mkOption {
+                  type = lib.types.nullOr lib.types.anything;
+                  default = null;
+                  description = ''
+                    YAML value to serialize. Sets `source` automatically.
+                    Requires `pkgs.yj` for JSON-to-YAML conversion.
+                  '';
+                };
                 source = lib.mkOption {
                   type = lib.types.path;
                   description = ''
                     Path or derivation to use as the file content.
-                    Set automatically when `text` is provided.
+                    Set automatically when `text`, `json`, `toml`, or `yaml`
+                    is provided.
                   '';
                 };
                 executable = lib.mkOption {
@@ -198,7 +221,19 @@ in
                   '';
                 };
               };
-              config.source = lib.mkIf (config.text != null) (pkgs.writeText name config.text);
+              config.source =
+                if config.text != null then
+                  pkgs.writeText name config.text
+                else if config.json != null then
+                  pkgs.writers.writeJSON name config.json
+                else if config.toml != null then
+                  (pkgs.formats.toml { }).generate name config.toml
+                else if config.yaml != null then
+                  pkgs.runCommand name { nativeBuildInputs = [ pkgs.yj ]; } ''
+                    yj -jy < ${pkgs.writers.writeJSON name config.yaml} > $out
+                  ''
+                else
+                  lib.mkDefault config.source;
             }
           )
         );
@@ -268,6 +303,19 @@ in
         };
         drv = lib.mkOption {
           description = "The writer executable derivation (read-only).";
+          type = lib.types.package;
+          readOnly = true;
+        };
+      };
+
+      diff = {
+        exeFilename = lib.mkOption {
+          type = lib.types.singleLineStr;
+          default = "diff-files";
+          description = "The diff executable filename.";
+        };
+        drv = lib.mkOption {
+          description = "The diff executable derivation (read-only).";
           type = lib.types.package;
           readOnly = true;
         };
@@ -415,6 +463,76 @@ in
             ''echo "No files configured. Add entries to files.file or files.files."''
           else
             lib.concatLines ([ preamble ] ++ writeCommands ++ onChangeHooks);
+      };
+
+    files.diff.drv =
+      let
+        formattedFiles = cfg._formattedFiles;
+
+        preamble = ''
+          cd "$(git rev-parse --show-toplevel)"
+        ''
+        + lib.optionalString (cfg.relativeRoot != "") ''
+          cd ${lib.escapeShellArg cfg.relativeRoot}
+        '';
+
+        diffCommands = map (
+          { path, drv, ... }:
+          let
+            escapedPath = lib.escapeShellArg path;
+          in
+          ''
+            if ! [ -f ${escapedPath} ]; then
+              echo "  create ${path}"
+              _changes=$((_changes + 1))
+              if [ "$_verbose" = 1 ]; then
+                difft --display inline /dev/null ${drv} || true
+              fi
+            elif ! cmp -s ${drv} ${escapedPath}; then
+              echo "  update ${path}"
+              _changes=$((_changes + 1))
+              if [ "$_verbose" = 1 ]; then
+                difft --display inline ${escapedPath} ${drv} || true
+              fi
+            else
+              echo "  ok     ${path}"
+            fi
+          ''
+        ) formattedFiles;
+      in
+      pkgs.writeShellApplication {
+        name = cfg.diff.exeFilename;
+        runtimeInputs = [
+          pkgs.gitMinimal
+          pkgs.difftastic
+        ];
+        derivationArgs = {
+          allowSubstitutes = false;
+          preferLocalBuild = true;
+        };
+        text =
+          if formattedFiles == [ ] then
+            ''echo "No files configured. Add entries to files.file or files.files."''
+          else
+            ''
+              _changes=0
+              _verbose=0
+              for arg in "$@"; do
+                case "$arg" in
+                  -v|--verbose) _verbose=1 ;;
+                esac
+              done
+            ''
+            + preamble
+            + lib.concatLines diffCommands
+            + ''
+              if [ "$_changes" -eq 0 ]; then
+                echo "All files up to date."
+              else
+                echo "$_changes file(s) would change."
+                exit 1
+              fi
+            '';
       };
 
     files.checks = lib.pipe cfg._formattedFiles [

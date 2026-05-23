@@ -22,6 +22,10 @@
             type = "app";
             program = lib.getExe config.files.writer.drv;
           };
+          ${config.files.diff.exeFilename} = {
+            type = "app";
+            program = lib.getExe config.files.diff.drv;
+          };
         };
       };
     }
