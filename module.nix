@@ -291,6 +291,12 @@ in
         );
       };
 
+      paths = lib.mkOption {
+        type = lib.types.listOf lib.types.str;
+        readOnly = true;
+        description = "Destination paths from all file entries. Cheap to evaluate — does not force derivations.";
+      };
+
       _formattedFiles = lib.mkOption {
         type = lib.types.listOf lib.types.unspecified;
         readOnly = true;
@@ -356,6 +362,11 @@ in
         enabledFiles = lib.filterAttrs (_: v: v.enable) cfg.file;
       in
       lib.mapAttrsToList toListEntry enabledFiles;
+
+    # Cheap path list — only touches .path, never .drv.
+    paths =
+      (map (f: f.path) cfg.files)
+      ++ (lib.mapAttrsToList (name: _: name) (lib.filterAttrs (_: v: v.enable) cfg.file));
 
     # apply formatting to all files.files entries (both attrset and list API)
     _formattedFiles =
